@@ -9,9 +9,22 @@ export class GameService {
     constructor(private prisma: PrismaService) { }
 
     async createGameWithPlayers(dto: CreateGameDto) {
-        const game = await this.prisma.game.create({
-            data: { date: new Date(dto.date) },
+        const existing = await this.prisma.game.findUnique({
+            where: { externalId: dto.gameId },
         });
+
+        if (existing) {
+            return { message: '⚠️ Game déjà enregistrée (duplication évitée).' };
+        }
+
+        // ✅ Crée la game avec son gameId (externalId)
+        const game = await this.prisma.game.create({
+            data: {
+                externalId: dto.gameId,
+                date: new Date(dto.date),
+            },
+        });
+
 
         const winners = dto.players.filter(p => p.isWinner);
         const losers = dto.players.filter(p => !p.isWinner);

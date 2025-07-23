@@ -1,5 +1,7 @@
 export class CreateGameDto {
     date: string;
+    gameId: string;
+
     players: {
         puuid: string;
         gameName: string;

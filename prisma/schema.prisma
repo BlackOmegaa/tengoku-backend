@@ -29,6 +29,7 @@ model User {
 
 model Game {
   id        String           @id @default(cuid())
+  externalId String          @unique
   date      DateTime
   players   PlayerInGame[]
 }
