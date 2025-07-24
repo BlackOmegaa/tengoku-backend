@@ -25,14 +25,6 @@ export class GameService {
             },
         });
 
-        const winners = dto.players.filter(p => p.isWinner);
-        const losers = dto.players.filter(p => !p.isWinner);
-
-        const avgGoldWinners = this.avg(winners.map(p => p.gold));
-        const avgGoldLosers = this.avg(losers.map(p => p.gold));
-        const avgDmgWinners = this.avg(winners.map(p => p.damageDealt));
-        const avgDmgLosers = this.avg(losers.map(p => p.damageDealt));
-
         for (const player of dto.players) {
             const user = await this.prisma.user.upsert({
                 where: { puuid: player.puuid },
@@ -51,15 +43,13 @@ export class GameService {
                 },
             });
 
-            const tpChange = this.calculateTPChange(player, {
-                avgGold: player.isWinner ? avgGoldWinners : avgGoldLosers,
-                avgDmg: player.isWinner ? avgDmgWinners : avgDmgLosers,
-            });
+            const teamPlayers = dto.players.filter(p => p.isWinner === player.isWinner);
+            const tpChange = this.calculateTPChange(player, teamPlayers);
 
             await this.prisma.playerInGame.create({
                 data: {
                     userId: user.id,
-                    gameId: game.id, // ← ça reste une string (relation via `id`)
+                    gameId: game.id,
                     champion: player.champion,
                     isWinner: player.isWinner,
                     kills: player.kills,
@@ -84,31 +74,53 @@ export class GameService {
         return { message: 'Game, joueurs et TP enregistrés avec succès.' };
     }
 
-
-
     private avg(arr: number[]): number {
         return arr.length ? arr.reduce((sum, val) => sum + val, 0) / arr.length : 0;
     }
 
     private calculateTPChange(
         player: CreateGameDto['players'][0],
-        teamStats: { avgGold: number; avgDmg: number },
+        teamPlayers: CreateGameDto['players']
     ): number {
-        let tp = player.isWinner ? 20 : -15;
+        if (player.wasAfk) return -20;
 
-        if (player.gold > teamStats.avgGold + 300) tp += 5;
-        else if (player.gold < teamStats.avgGold - 300) tp -= 5;
+        const deaths = Math.max(player.deaths, 1);
+        const kdaScore = ((player.kills + player.assists) / deaths) * 2;
+        const damageScore = (player.damageDealt / 1000) * 1.2;
+        const tankScore = (player.damageTaken / 1000) * 0.8;
+        const healScore = (player.healOnTeammates / 1000) * 1.5;
+        const shieldScore = (player.shieldOnTeammates / 1000) * 1.5;
+        const ccScore = (player.ccScore / 10) * 1.0;
+        const objectiveScore = (player.killingSpree * 0.5) + (player.multiKill * 1);
 
-        if (player.damageDealt > teamStats.avgDmg * 1.15) tp += 5;
-        else if (player.damageDealt < teamStats.avgDmg * 0.85) tp -= 5;
+        const impactScore = kdaScore + damageScore + tankScore + healScore + shieldScore + ccScore + objectiveScore;
 
-        const deaths = player.deaths || 1;
-        const kda = (player.kills + player.assists) / deaths;
-        if (kda > 4) tp += 5;
-        else if (kda < 1) tp -= 5;
+        const teamScores = teamPlayers.map(p => {
+            const player = p as CreateGameDto['players'][0];
+            const d = Math.max(player.deaths, 1);
+            return ((player.kills + player.assists) / d) * 2 +
+                (player.damageDealt / 1000) * 1.2 +
+                (player.damageTaken / 1000) * 0.8 +
+                (player.healOnTeammates / 1000) * 1.5 +
+                (player.shieldOnTeammates / 1000) * 1.5 +
+                (player.ccScore / 10) * 1.0 +
+                (player.killingSpree * 0.5) +
+                (player.multiKill * 1);
+        });
 
-        return tp;
+        const avgTeamScore = this.avg(teamScores);
+
+        let tp = player.isWinner ? 15 : -10;
+        const delta = impactScore - avgTeamScore;
+
+        if (delta > 10) tp += 5;
+        else if (delta > 5) tp += 3;
+        else if (delta < -10) tp -= 5;
+        else if (delta < -5) tp -= 3;
+
+        return Math.max(-15, Math.min(25, Math.round(tp)));
     }
+
 
     async getGameHistoryForUser(puuid: string) {
         const user = await this.prisma.user.findUnique({

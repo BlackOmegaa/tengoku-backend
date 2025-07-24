@@ -18,5 +18,14 @@ export class CreateGameDto {
         damageDealt: number;
         damageTaken: number;
         tpChange: number;
+
+        // Champs additionnels pour le calcul des TP uniquement (pas stockés en DB)
+        healOnTeammates: number;
+        shieldOnTeammates: number;
+        ccScore: number;
+        wasAfk: number;
+        physicalDamageTaken: number;
+        multiKill: number;
+        killingSpree: number;
     }[];
 }
