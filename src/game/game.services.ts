@@ -9,22 +9,26 @@ export class GameService {
     constructor(private prisma: PrismaService) { }
 
     async createGameWithPlayers(dto: CreateGameDto) {
+        const gameIdAsInt = Number(dto.gameId);
+
+        if (isNaN(gameIdAsInt)) {
+            throw new Error('Le gameId fourni n’est pas un nombre valide');
+        }
+
         const existing = await this.prisma.game.findUnique({
-            where: { externalId: dto.gameId },
+            where: { externalId: gameIdAsInt },
         });
 
         if (existing) {
             return { message: '⚠️ Game déjà enregistrée (duplication évitée).' };
         }
 
-        // ✅ Crée la game avec son gameId (externalId)
         const game = await this.prisma.game.create({
             data: {
-                externalId: dto.gameId,
+                externalId: gameIdAsInt,
                 date: new Date(dto.date),
             },
         });
-
 
         const winners = dto.players.filter(p => p.isWinner);
         const losers = dto.players.filter(p => !p.isWinner);
@@ -60,7 +64,7 @@ export class GameService {
             await this.prisma.playerInGame.create({
                 data: {
                     userId: user.id,
-                    gameId: game.id,
+                    gameId: game.id, // ← ça reste une string (relation via `id`)
                     champion: player.champion,
                     isWinner: player.isWinner,
                     kills: player.kills,
@@ -76,13 +80,16 @@ export class GameService {
 
             await this.prisma.user.update({
                 where: { id: user.id },
-                data: { tp: Math.max(user.tp + tpChange, 0) },
+                data: {
+                    tp: Math.max(user.tp + tpChange, 0),
+                },
             });
-
         }
 
         return { message: 'Game, joueurs et TP enregistrés avec succès.' };
     }
+
+
 
     private avg(arr: number[]): number {
         return arr.length ? arr.reduce((sum, val) => sum + val, 0) / arr.length : 0;
