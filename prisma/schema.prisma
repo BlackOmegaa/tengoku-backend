@@ -31,7 +31,7 @@ model User {
 
 model Game {
   id        String           @id @default(cuid())
-  externalId Int              @unique
+  externalId BigInt          @unique
   date      DateTime
   players   PlayerInGame[]
 }

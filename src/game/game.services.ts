@@ -9,11 +9,7 @@ export class GameService {
     constructor(private prisma: PrismaService) { }
 
     async createGameWithPlayers(dto: CreateGameDto) {
-        const gameIdAsInt = Number(dto.gameId);
-
-        if (isNaN(gameIdAsInt)) {
-            throw new Error('Le gameId fourni n’est pas un nombre valide');
-        }
+        const gameIdAsInt = BigInt(dto.gameId);
 
         const existing = await this.prisma.game.findUnique({
             where: { externalId: gameIdAsInt },
