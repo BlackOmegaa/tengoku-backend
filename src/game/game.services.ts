@@ -84,8 +84,10 @@ export class GameService {
     ): number {
         if (player.wasAfk) return -20;
 
+        // ==== SCORE D'IMPACT ==== //
         const deaths = Math.max(player.deaths, 1);
         const kdaScore = ((player.kills + player.assists) / deaths) * 2;
+
         const damageScore = (player.damageDealt / 1000) * 1.2;
         const tankScore = (player.damageTaken / 1000) * 0.8;
         const healScore = (player.healOnTeammates / 1000) * 1.5;
@@ -93,33 +95,50 @@ export class GameService {
         const ccScore = (player.ccScore / 10) * 1.0;
         const objectiveScore = (player.killingSpree * 0.5) + (player.multiKill * 1);
 
-        const impactScore = kdaScore + damageScore + tankScore + healScore + shieldScore + ccScore + objectiveScore;
+        const impactScore =
+            kdaScore +
+            damageScore +
+            tankScore +
+            healScore +
+            shieldScore +
+            ccScore +
+            objectiveScore;
 
+        // ==== COMPARAISON À L'ÉQUIPE ==== //
         const teamScores = teamPlayers.map(p => {
-            const player = p as CreateGameDto['players'][0];
-            const d = Math.max(player.deaths, 1);
-            return ((player.kills + player.assists) / d) * 2 +
-                (player.damageDealt / 1000) * 1.2 +
-                (player.damageTaken / 1000) * 0.8 +
-                (player.healOnTeammates / 1000) * 1.5 +
-                (player.shieldOnTeammates / 1000) * 1.5 +
-                (player.ccScore / 10) * 1.0 +
-                (player.killingSpree * 0.5) +
-                (player.multiKill * 1);
+            const d = Math.max(p.deaths, 1);
+            const score =
+                ((p.kills + p.assists) / d) * 2 +
+                (p.damageDealt / 1000) * 1.2 +
+                (p.damageTaken / 1000) * 0.8 +
+                (p.healOnTeammates / 1000) * 1.5 +
+                (p.shieldOnTeammates / 1000) * 1.5 +
+                (p.ccScore / 10) * 1.0 +
+                (p.killingSpree * 0.5) +
+                (p.multiKill * 1);
+            return score;
         });
 
         const avgTeamScore = this.avg(teamScores);
-
-        let tp = player.isWinner ? 15 : -10;
         const delta = impactScore - avgTeamScore;
 
-        if (delta > 10) tp += 5;
-        else if (delta > 5) tp += 3;
-        else if (delta < -10) tp -= 5;
-        else if (delta < -5) tp -= 3;
+        // ==== CALCUL DE TP ==== //
+        let tp = player.isWinner ? 18 : -8;
 
-        return Math.max(-15, Math.min(25, Math.round(tp)));
+        if (delta > 10) tp += 7;
+        else if (delta > 5) tp += 4;
+        else if (delta < -10) tp -= 7;
+        else if (delta < -5) tp -= 4;
+
+        // Clamp final
+        tp = Math.max(-15, Math.min(25, Math.round(tp)));
+
+        // [Optionnel] Minimum en cas de win
+        if (player.isWinner) tp = Math.max(tp, 12);
+
+        return tp;
     }
+
 
 
     async getGameHistoryForUser(puuid: string) {
