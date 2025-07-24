@@ -88,8 +88,8 @@ export class GameService {
         const kdaScore = ((player.kills + player.assists) / deaths) * 2;
         const damageScore = (player.damageDealt / 1000) * 1.2;
         const tankScore = (player.damageTaken / 1000) * 0.8;
-        const healScore = (player.healOnTeammates / 1000) * 1.2;
-        const shieldScore = (player.shieldOnTeammates / 1000) * 1.2;
+        const healScore = (player.healOnTeammates / 1000) * 1.0;
+        const shieldScore = (player.shieldOnTeammates / 1000) * 1.0;
         const ccScore = (player.ccScore / 10) * 1.0;
         const objectiveScore = (player.killingSpree * 0.8) + (player.multiKill * 2);
 
@@ -112,8 +112,8 @@ export class GameService {
             return ((p.kills + p.assists) / d) * 2 +
                 (p.damageDealt / 1000) * 1.2 +
                 (p.damageTaken / 1000) * 0.8 +
-                (p.healOnTeammates / 1000) * 1.2 +
-                (p.shieldOnTeammates / 1000) * 1.2 +
+                (p.healOnTeammates / 1000) * 1.0 +
+                (p.shieldOnTeammates / 1000) * 1.0 +
                 (p.ccScore / 10) * 1.0 +
                 (p.killingSpree * 0.8) +
                 (p.multiKill * 2) +
@@ -123,15 +123,15 @@ export class GameService {
         const avgTeamScore = this.avg(teamScores);
         const delta = impactScore - avgTeamScore;
 
-        let tp = player.isWinner ? 18 : -12;
+        let tp = player.isWinner ? 20 : -12;
 
-        if (delta > 10) tp += 7;
-        else if (delta > 5) tp += 4;
-        else if (delta < -10) tp -= 8;
-        else if (delta < -5) tp -= 5;
+        if (delta > 10) tp += 3;
+        else if (delta > 5) tp += 2;
+        else if (delta < -10) tp -= 6;
+        else if (delta < -5) tp -= 3;
 
         tp = Math.max(-15, Math.min(25, Math.round(tp)));
-        if (player.isWinner) tp = Math.max(tp, 12);
+        if (player.isWinner) tp = Math.max(tp, 15);
 
         return tp;
     }
