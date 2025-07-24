@@ -187,7 +187,7 @@ export class GameService {
                 }));
 
             return {
-                gameId: game.id,
+                gameId: game.id.toString(), // ✅ corrige le BigInt
                 date: game.date,
                 self,
                 teams: {
