@@ -84,16 +84,17 @@ export class GameService {
     ): number {
         if (player.wasAfk) return -20;
 
-        // ==== SCORE D'IMPACT ==== //
         const deaths = Math.max(player.deaths, 1);
         const kdaScore = ((player.kills + player.assists) / deaths) * 2;
-
         const damageScore = (player.damageDealt / 1000) * 1.2;
         const tankScore = (player.damageTaken / 1000) * 0.8;
-        const healScore = (player.healOnTeammates / 1000) * 1.5;
-        const shieldScore = (player.shieldOnTeammates / 1000) * 1.5;
+        const healScore = (player.healOnTeammates / 1000) * 1.2;
+        const shieldScore = (player.shieldOnTeammates / 1000) * 1.2;
         const ccScore = (player.ccScore / 10) * 1.0;
-        const objectiveScore = (player.killingSpree * 0.5) + (player.multiKill * 1);
+        const objectiveScore = (player.killingSpree * 0.8) + (player.multiKill * 2);
+
+        const teamfightParticipation = (player.kills + player.assists) / Math.max(1, teamPlayers.length * 10);
+        const tfScore = teamfightParticipation * 5;
 
         const impactScore =
             kdaScore +
@@ -102,38 +103,34 @@ export class GameService {
             healScore +
             shieldScore +
             ccScore +
-            objectiveScore;
+            objectiveScore +
+            tfScore;
 
-        // ==== COMPARAISON À L'ÉQUIPE ==== //
         const teamScores = teamPlayers.map(p => {
             const d = Math.max(p.deaths, 1);
-            const score =
-                ((p.kills + p.assists) / d) * 2 +
+            const tf = (p.kills + p.assists) / Math.max(1, teamPlayers.length * 10);
+            return ((p.kills + p.assists) / d) * 2 +
                 (p.damageDealt / 1000) * 1.2 +
                 (p.damageTaken / 1000) * 0.8 +
-                (p.healOnTeammates / 1000) * 1.5 +
-                (p.shieldOnTeammates / 1000) * 1.5 +
+                (p.healOnTeammates / 1000) * 1.2 +
+                (p.shieldOnTeammates / 1000) * 1.2 +
                 (p.ccScore / 10) * 1.0 +
-                (p.killingSpree * 0.5) +
-                (p.multiKill * 1);
-            return score;
+                (p.killingSpree * 0.8) +
+                (p.multiKill * 2) +
+                (tf * 5);
         });
 
         const avgTeamScore = this.avg(teamScores);
         const delta = impactScore - avgTeamScore;
 
-        // ==== CALCUL DE TP ==== //
-        let tp = player.isWinner ? 18 : -8;
+        let tp = player.isWinner ? 18 : -12;
 
         if (delta > 10) tp += 7;
         else if (delta > 5) tp += 4;
-        else if (delta < -10) tp -= 7;
-        else if (delta < -5) tp -= 4;
+        else if (delta < -10) tp -= 8;
+        else if (delta < -5) tp -= 5;
 
-        // Clamp final
         tp = Math.max(-15, Math.min(25, Math.round(tp)));
-
-        // [Optionnel] Minimum en cas de win
         if (player.isWinner) tp = Math.max(tp, 12);
 
         return tp;
