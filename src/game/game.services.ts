@@ -9,10 +9,9 @@ export class GameService {
     constructor(private prisma: PrismaService) { }
 
     async createGameWithPlayers(dto: CreateGameDto) {
-        const gameIdAsInt = BigInt(dto.gameId);
 
         const existing = await this.prisma.game.findUnique({
-            where: { externalId: gameIdAsInt },
+            where: { externalId: dto.gameId },
         });
 
         if (existing) {
@@ -21,7 +20,7 @@ export class GameService {
 
         const game = await this.prisma.game.create({
             data: {
-                externalId: gameIdAsInt,
+                externalId: dto.gameId,
                 date: new Date(dto.date),
             },
         });
@@ -187,7 +186,7 @@ export class GameService {
                 }));
 
             return {
-                gameId: game.id.toString(), // ✅ corrige le BigInt
+                gameId: game.id,
                 date: game.date,
                 self,
                 teams: {
