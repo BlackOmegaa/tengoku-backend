@@ -20,13 +20,14 @@ type GamePayload = {
         damageDealt: number;
         damageTaken: number;
         tpChange: number;
-        healOnTeammates: number;
-        shieldOnTeammates: number;
-        ccScore: number;
-        wasAfk: number;
-        physicalDamageTaken: number;
-        multiKill: number;
-        killingSpree: number;
+        // champs “TP calc” inutilisés ici volontairement
+        healOnTeammates?: number;
+        shieldOnTeammates?: number;
+        ccScore?: number;
+        wasAfk?: number;
+        physicalDamageTaken?: number;
+        multiKill?: number;
+        killingSpree?: number;
     }>;
 };
 
@@ -34,7 +35,11 @@ type GamePayload = {
 export class DiscordWebhookService {
     private readonly logger = new Logger(DiscordWebhookService.name);
     private readonly webhookUrl = process.env.DISCORD_GAME_WEBHOOK_URL;
+    // Optionnel : personaliser le nom/avatar du webhook
+    private readonly username = process.env.DISCORD_GAME_WEBHOOK_NAME ?? 'Tengoku Tracker';
+    private readonly avatarUrl = process.env.DISCORD_GAME_WEBHOOK_AVATAR ?? undefined;
 
+    // ===== utils
     private fmt(n: number | undefined | null) {
         if (n == null || Number.isNaN(n)) return '0';
         return n.toLocaleString('fr-FR');
@@ -43,144 +48,117 @@ export class DiscordWebhookService {
         const denom = Math.max(1, d);
         return ((k + a) / denom).toFixed(2);
     }
-    private chunk(s: string, size = 1024) {
-        const out: string[] = [];
-        for (let i = 0; i < s.length; i += size) out.push(s.slice(i, i + size));
-        return out;
-    }
     private sum(arr: number[]) {
         return arr.reduce((a, b) => a + (Number.isFinite(b) ? b : 0), 0);
     }
+    private chunk1024(s: string): string[] {
+        const out: string[] = [];
+        for (let i = 0; i < s.length; i += 1024) out.push(s.slice(i, i + 1024));
+        return out;
+    }
+    private tpBadge(tp: number) {
+        if (tp > 0) return `📈 **+${tp} TP**`;
+        if (tp < 0) return `📉 **${tp} TP**`;
+        return `➖ **${tp} TP**`;
+    }
 
-    private buildEmbeds(dto: GamePayload) {
+    // ===== format
+    private teamTotals(players: GamePayload['players']) {
+        const kills = this.sum(players.map(p => p.kills));
+        const deaths = this.sum(players.map(p => p.deaths));
+        const assists = this.sum(players.map(p => p.assists));
+        const cs = this.sum(players.map(p => p.cs));
+        const gold = this.sum(players.map(p => p.gold));
+        const dmgOut = this.sum(players.map(p => p.damageDealt));
+        const dmgIn = this.sum(players.map(p => p.damageTaken));
+        const kdaR = this.kdaRatio(kills, deaths, assists);
+        return { kills, deaths, assists, cs, gold, dmgOut, dmgIn, kdaR };
+    }
+
+    private playerLine(p: GamePayload['players'][number]) {
+        const name = `${p.gameName}#${p.tagLine}`;
+        const kdaR = this.kdaRatio(p.kills, p.deaths, p.assists);
+        return [
+            `• **${name}** — *${p.champion}* (L${p.level})`,
+            `│ ⚔️ **${p.kills}**  💀 **${p.deaths}**  🤝 **${p.assists}**  *(KDA ${kdaR})*`,
+            `│ 🌾 **CS** ${this.fmt(p.cs)}  🪙 **${this.fmt(p.gold)}**  🔥 **${this.fmt(p.damageDealt)}** / 🩸 **${this.fmt(p.damageTaken)}**`,
+            `│ ${this.tpBadge(p.tpChange)}`
+        ].join('\n');
+    }
+
+    private buildSingleEmbed(dto: GamePayload) {
         const winners = dto.players.filter(p => p.isWinner);
         const losers = dto.players.filter(p => !p.isWinner);
 
-        const sumStats = (team: GamePayload['players']) => {
-            const kills = this.sum(team.map(p => p.kills));
-            const deaths = this.sum(team.map(p => p.deaths));
-            const assists = this.sum(team.map(p => p.assists));
-            const cs = this.sum(team.map(p => p.cs));
-            const gold = this.sum(team.map(p => p.gold));
-            const dmgOut = this.sum(team.map(p => p.damageDealt));
-            const dmgIn = this.sum(team.map(p => p.damageTaken));
-            const tp = this.sum(team.map(p => p.tpChange));
-            const heal = this.sum(team.map(p => p.healOnTeammates));
-            const shield = this.sum(team.map(p => p.shieldOnTeammates));
-            const cc = this.sum(team.map(p => p.ccScore));
-            const afk = this.sum(team.map(p => p.wasAfk));
-            const physIn = this.sum(team.map(p => p.physicalDamageTaken));
-            const multi = this.sum(team.map(p => p.multiKill));
-            const spree = this.sum(team.map(p => p.killingSpree));
-            return { kills, deaths, assists, cs, gold, dmgOut, dmgIn, tp, heal, shield, cc, afk, physIn, multi, spree };
-        };
+        const winTot = this.teamTotals(winners);
+        const loseTot = this.teamTotals(losers);
 
-        const w = sumStats(winners);
-        const l = sumStats(losers);
+        const winHeader =
+            `🏆 **Équipe Vainqueurs**\n` +
+            `K/D/A: **${this.fmt(winTot.kills)}/${this.fmt(winTot.deaths)}/${this.fmt(winTot.assists)}** *(KDA ${winTot.kdaR})* • ` +
+            `🌾 CS **${this.fmt(winTot.cs)}** • 🪙 **${this.fmt(winTot.gold)}** • 🔥/**🩸** **${this.fmt(winTot.dmgOut)}**/**${this.fmt(winTot.dmgIn)}**`;
 
-        const teamLine = (label: string, s: ReturnType<typeof sumStats>) => {
-            const kdaR = this.kdaRatio(s.kills, s.deaths, s.assists);
-            return [
-                `**${label}**`,
-                `— **K/D/A** ${this.fmt(s.kills)}/${this.fmt(s.deaths)}/${this.fmt(s.assists)} (KDA ${kdaR})`,
-                `— **CS** ${this.fmt(s.cs)}`,
-                `— **Gold** ${this.fmt(s.gold)}`,
-                `— **Dmg** ${this.fmt(s.dmgOut)}/${this.fmt(s.dmgIn)}`,
-                `— **TP** ${s.tp >= 0 ? '+' : ''}${this.fmt(s.tp)}`,
-                `— **Heal/Shield** ${this.fmt(s.heal)}/${this.fmt(s.shield)}`,
-                `— **CC** ${this.fmt(s.cc)}`,
-                s.afk ? `— **AFK** ${this.fmt(s.afk)}s` : '',
-                s.physIn ? `— **PhysIn** ${this.fmt(s.physIn)}` : '',
-                s.multi ? `— **xMulti** ${this.fmt(s.multi)}` : '',
-                s.spree ? `— **xSpree** ${this.fmt(s.spree)}` : '',
-            ].filter(Boolean).join(' ');
-        };
+        const loseHeader =
+            `💔 **Équipe Perdants**\n` +
+            `K/D/A: **${this.fmt(loseTot.kills)}/${this.fmt(loseTot.deaths)}/${this.fmt(loseTot.assists)}** *(KDA ${loseTot.kdaR})* • ` +
+            `🌾 CS **${this.fmt(loseTot.cs)}** • 🪙 **${this.fmt(loseTot.gold)}** • 🔥/**🩸** **${this.fmt(loseTot.dmgOut)}**/**${this.fmt(loseTot.dmgIn)}**`;
 
-        const fmtPlayer = (p: GamePayload['players'][number]) => {
-            const name = `${p.gameName}#${p.tagLine}`;
-            const kdaR = this.kdaRatio(p.kills, p.deaths, p.assists);
-            return [
-                `• **${name}** (${p.champion}, L${p.level})`,
-                `— **${p.kills}/${p.deaths}/${p.assists}** (KDA ${kdaR})`,
-                `— **CS** ${this.fmt(p.cs)} — **Gold** ${this.fmt(p.gold)}`,
-                `— **Dmg** ${this.fmt(p.damageDealt)}/${this.fmt(p.damageTaken)}`,
-                `— **TP** ${p.tpChange >= 0 ? '+' : ''}${p.tpChange}`,
-                `— **Heal/Shield** ${this.fmt(p.healOnTeammates)}/${this.fmt(p.shieldOnTeammates)}`,
-                `— **CC** ${this.fmt(p.ccScore)}`,
-                p.wasAfk ? `— **AFK** ${this.fmt(p.wasAfk)}s` : '',
-                p.physicalDamageTaken ? `— **PhysIn** ${this.fmt(p.physicalDamageTaken)}` : '',
-                p.multiKill ? `— **xMulti** ${this.fmt(p.multiKill)}` : '',
-                p.killingSpree ? `— **xSpree** ${this.fmt(p.killingSpree)}` : '',
-            ].filter(Boolean).join(' ');
-        };
+        const winBody = winners.map(p => this.playerLine(p)).join('\n');
+        const loseBody = losers.map(p => this.playerLine(p)).join('\n');
 
-        const wLines = winners.map(fmtPlayer).join('\n');
-        const lLines = losers.map(fmtPlayer).join('\n');
+        // fields ≤ 1024 chars → chunk si besoin
+        const winChunks = this.chunk1024(`${winHeader}\n\n${winBody}`);
+        const loseChunks = this.chunk1024(`${loseHeader}\n\n${loseBody}`);
 
-        const base = {
-            title: `✅ Game validée — ID ${dto.gameId}`,
-            description: `**Vainqueurs :** ${winners.length} • **Perdants :** ${losers.length}`,
+        const fields: Array<{ name: string; value: string; inline?: boolean }> = [];
+        winChunks.forEach((ch, i) => fields.push({ name: i === 0 ? '🏆 Vainqueurs' : '🏆 Vainqueurs (suite)', value: ch }));
+        loseChunks.forEach((ch, i) => fields.push({ name: i === 0 ? '💔 Perdants' : '💔 Perdants (suite)', value: ch }));
+
+        const color = 0x22c55e; // vert
+        const embed = {
+            title: `✅ Partie terminée`,
+            description: `ID: \`${dto.gameId}\``,
             timestamp: new Date(dto.date).toISOString(),
-            color: 0x3fb950,
-            fields: [
-                { name: 'Résumé Vainqueurs', value: teamLine('Winners', w).slice(0, 1024) },
-                { name: 'Résumé Perdants', value: teamLine('Losers', l).slice(0, 1024) },
-            ],
+            color,
+            fields,
+            footer: { text: 'Tengoku Tracker • GG à tous' },
         };
 
-        const embeds: any[] = [base];
-
-        const wChunks = this.chunk(wLines);
-        if (wChunks.length) {
-            embeds.push({
-                title: 'Détail joueurs — Vainqueurs',
-                color: 0x238636,
-                fields: wChunks.map((c, i) => ({ name: i === 0 ? 'Vainqueurs' : `Vainqueurs (suite ${i})`, value: c || '—' })),
-            });
-        }
-        const lChunks = this.chunk(lLines);
-        if (lChunks.length) {
-            embeds.push({
-                title: 'Détail joueurs — Perdants',
-                color: 0xda3633,
-                fields: lChunks.map((c, i) => ({ name: i === 0 ? 'Perdants' : `Perdants (suite ${i})`, value: c || '—' })),
-            });
-        }
-
-        // garde max 10 embeds (limite Discord)
-        return embeds.slice(0, 10);
+        return embed;
     }
 
+    // ===== post
     async sendGameValidated(dto: GamePayload): Promise<void> {
         if (!this.webhookUrl) {
             this.logger.warn('DISCORD_GAME_WEBHOOK_URL manquant, envoi ignoré.');
             return;
         }
 
-        const embeds = this.buildEmbeds(dto);
+        const embed = this.buildSingleEmbed(dto);
 
-        // simple retry 429
-        const doPost = async () => {
+        const body: any = { embeds: [embed] };
+        if (this.username) body.username = this.username;
+        if (this.avatarUrl) body.avatar_url = this.avatarUrl;
+
+        const postOnce = async () => {
             const res = await fetch(this.webhookUrl!, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ embeds }),
+                body: JSON.stringify(body),
             });
             if (res.status === 429) {
-                const body = await res.json().catch(() => ({}));
-                const retryAfter = Math.min(5, Number(body?.retry_after ?? 1));
-                this.logger.warn(`Discord rate-limited. Retry in ${retryAfter}s`);
-                await new Promise(r => setTimeout(r, retryAfter * 1000));
-                return doPost();
+                const j = await res.json().catch(() => ({}));
+                const retry = Math.min(5, Number(j?.retry_after ?? 1));
+                await new Promise(r => setTimeout(r, retry * 1000));
+                return postOnce();
             }
             if (!res.ok) {
-                const text = await res.text().catch(() => '');
-                throw new Error(`Discord webhook HTTP ${res.status}: ${text}`);
+                throw new Error(`Discord webhook HTTP ${res.status}: ${await res.text().catch(() => '')}`);
             }
         };
 
         try {
-            await doPost();
+            await postOnce();
             this.logger.log(`Webhook envoyé pour game ${dto.gameId}`);
         } catch (e) {
             this.logger.error(`Échec envoi webhook (game ${dto.gameId}) → ${e instanceof Error ? e.message : e}`);
