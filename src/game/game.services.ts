@@ -3,18 +3,18 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateGameDto } from './dto/create-game.dto';
+import { DiscordWebhookService } from '../discord/discord-webhook.service';
 
 @Injectable()
 export class GameService {
-    constructor(private prisma: PrismaService) { }
+    constructor(private prisma: PrismaService, private readonly discordWebhook: DiscordWebhookService) { }
 
     async createGameWithPlayers(dto: CreateGameDto) {
-
         const existing = await this.prisma.game.findUnique({
             where: { externalId: dto.gameId },
         });
-
         if (existing) {
+            // pas de webhook pour un doublon
             return { message: '⚠️ Game déjà enregistrée (duplication évitée).' };
         }
 
@@ -71,8 +71,44 @@ export class GameService {
             });
         }
 
+        // ✅ ENVOI WEBHOOK ICI (avant return) — on mappe dto -> payload attendu
+        try {
+            await this.discordWebhook.sendGameValidated({
+                date: new Date(dto.date).toISOString(),
+                gameId: dto.gameId,
+                players: dto.players.map(p => ({
+                    puuid: p.puuid,
+                    gameName: p.gameName,
+                    tagLine: p.tagLine,
+                    profileIconId: p.profileIconId,
+                    level: p.level,
+                    champion: p.champion,
+                    isWinner: p.isWinner,
+                    kills: p.kills,
+                    deaths: p.deaths,
+                    assists: p.assists,
+                    cs: p.cs,
+                    gold: p.gold,
+                    damageDealt: p.damageDealt,
+                    damageTaken: p.damageTaken,
+                    tpChange: p.tpChange ?? 0,
+                    healOnTeammates: p.healOnTeammates ?? 0,
+                    shieldOnTeammates: p.shieldOnTeammates ?? 0,
+                    ccScore: p.ccScore ?? 0,
+                    wasAfk: p.wasAfk ?? 0,
+                    physicalDamageTaken: p.physicalDamageTaken ?? 0,
+                    multiKill: p.multiKill ?? 0,
+                    killingSpree: p.killingSpree ?? 0,
+                })),
+            });
+        } catch (e) {
+            // on log mais on ne casse pas la création
+            console.error('[DiscordWebhook] Envoi échoué:', e);
+        }
+
         return { message: 'Game, joueurs et TP enregistrés avec succès.' };
     }
+
 
     private avg(arr: number[]): number {
         return arr.length ? arr.reduce((sum, val) => sum + val, 0) / arr.length : 0;
