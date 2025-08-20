@@ -6,9 +6,10 @@ import { PrismaService } from './prisma/prisma.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { GameModule } from './game/game.module';
 import { DebugModule } from './debug/debug.module';
+import { DiscordWebhookModule } from './discord/discord-webhook.module';
 
 @Module({
-  imports: [UserModule, PrismaModule, GameModule, DebugModule],
+  imports: [UserModule, PrismaModule, GameModule, DebugModule, DiscordWebhookModule],
   controllers: [AppController],
   providers: [AppService, PrismaService],
   exports: [PrismaService]
